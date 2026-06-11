@@ -8,6 +8,10 @@ export type { AuditResult, AuditCheck, SiteAuditResult } from './audit.js';
 export { markPng, markJpeg, markMedia, markFile, checkFile, isMarked, buildXmpPacket, sniffMediaType, TRAINED_ALGORITHMIC_MEDIA } from './mark.js';
 export type { MediaMarkOptions, MarkFileResult } from './mark.js';
 export { loadConfig, CONFIG_FILENAME } from './config.js';
+export { MonitorStore, PLAN_LIMITS, MonitorError, renderEvidence } from './monitor/store.js';
+export type { Plan, PlanLimits, ApiKey, Site, AuditRun } from './monitor/store.js';
+export { createMonitorServer, verifyStripeSignature } from './monitor/server.js';
+export { startScheduler, runSiteCheck } from './monitor/scheduler.js';
 export type { A50Config, CustomDetectorConfig } from './config.js';
 export type { Confidence, Detector, DetectorKind } from './rules/detectors.js';
 export {

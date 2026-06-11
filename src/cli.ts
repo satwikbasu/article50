@@ -24,7 +24,7 @@ const program = new Command();
 program
   .name('a50')
   .description('EU AI Act Article 50 transparency compliance toolkit')
-  .version('0.2.0');
+  .version('0.3.0');
 
 function parseConfidence(value: string): Confidence {
   if (value === 'high' || value === 'medium' || value === 'low') return value;
@@ -256,6 +256,42 @@ program
       }
     },
   );
+
+program
+  .command('monitor')
+  .description('Run the article50 Monitor server: scheduled audits, evidence logs, alerting')
+  .option('--port <n>', 'port to listen on', '8400')
+  .option('--data <dir>', 'data directory (keys, sites, append-only evidence log)', './a50-monitor-data')
+  .option('--admin-token <token>', 'admin token for key management (generated when omitted)')
+  .option('--tick <seconds>', 'scheduler tick interval', '15')
+  .action(async (opts: { port: string; data: string; adminToken?: string; tick: string }) => {
+    const { MonitorStore } = await import('./monitor/store.js');
+    const { createMonitorServer } = await import('./monitor/server.js');
+    const { startScheduler } = await import('./monitor/scheduler.js');
+
+    const store = new MonitorStore(resolve(opts.data));
+    const { server, adminToken } = createMonitorServer({
+      store,
+      adminToken: opts.adminToken ?? process.env.A50_ADMIN_TOKEN,
+      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      allowInsecureStripe: process.env.A50_INSECURE_STRIPE === '1',
+      log: (line) => console.log(pc.dim(`[monitor] ${line}`)),
+    });
+    startScheduler(store, {
+      tickMs: Math.max(1, Number(opts.tick) || 15) * 1000,
+      log: (line) => console.log(line),
+    });
+
+    const port = Number(opts.port) || 8400;
+    server.listen(port, () => {
+      console.log(pc.bold(pc.cyan('  article50 Monitor')) + pc.dim(` listening on :${port}`));
+      console.log(pc.dim(`  data dir: ${resolve(opts.data)}`));
+      if (!opts.adminToken && !process.env.A50_ADMIN_TOKEN) {
+        console.log(`  admin token (set A50_ADMIN_TOKEN to fix it): ${adminToken}`);
+      }
+      console.log(pc.dim('  create a key:  curl -X POST :' + port + '/v1/keys -H "Authorization: Bearer <admin>" -d \'{"plan":"team"}\''));
+    });
+  });
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(pc.red(err instanceof Error ? err.message : String(err)));

@@ -127,11 +127,33 @@ const page = markHtml(html, { model: 'gpt-4o' });  // inject Art. 50(2) marking
 const labeled = markPng(imageBuffer);              // XMP-marked PNG buffer
 ```
 
+## Monitor: the compliance evidence service
+
+`a50 monitor` runs a small server that audits your registered sites on a schedule, alerts a webhook when compliance regresses, and keeps an **append-only evidence log** — the dated "we were compliant on these dates" record auditors actually ask for.
+
+```bash
+A50_ADMIN_TOKEN=change-me a50 monitor --port 8400 --data ./monitor-data
+
+# create a customer API key (admin)
+curl -X POST localhost:8400/v1/keys \
+  -H "Authorization: Bearer change-me" -d '{"plan":"team","label":"acme"}'
+
+# register a site to monitor (customer)
+curl -X POST localhost:8400/v1/sites \
+  -H "Authorization: Bearer a50_..." \
+  -d '{"url":"https://your-app.com","intervalSeconds":3600,"webhook":"https://hooks.slack.com/..."}'
+
+# pull the evidence log for an auditor
+curl localhost:8400/v1/sites/<id>/evidence -H "Authorization: Bearer a50_..." > evidence.md
+```
+
+Plans are enforced by the server: `free` (1 site, daily checks), `site` (1 site, hourly), `team` (10 sites, every 15 minutes). A Stripe webhook endpoint (`/v1/billing/stripe`, with signature verification) upgrades a key's plan when a checkout completes. See [MONITOR.md](MONITOR.md) for deployment and Stripe setup.
+
 ## Pricing
 
-The CLI is free and MIT-licensed. Scan, audit, mark, and generate as much as you want, forever.
+The CLI is free and MIT-licensed. Scan, audit, mark, generate, and even self-host Monitor as much as you want, forever.
 
-The paid product, article50 Monitor, is the hosted version of `watch`: daily audits of your production sites, alerts on regressions, an evidence log you can hand to auditors ("we were compliant on these dates"), and updates when the EU moves dates or publishes new guidance. €29/month for one site, €99/month for ten plus org-wide scan reports. You can self-host `watch` with cron instead; Monitor exists for teams that want the evidence trail without running infrastructure.
+The hosted Monitor is the paid product: €29/month for one site, €99/month for ten plus org-wide scan reports. Same code you can read in this repo, plus someone else carrying the uptime, the backups, and the regulation-update feed. Self-hosters lose nothing except the not-having-to-run-it.
 
 ## What it detects
 

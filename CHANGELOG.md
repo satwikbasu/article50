@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-06-11
+
+The revenue engine. `a50 monitor` runs the Monitor server: scheduled audits of registered sites, Slack-compatible regression alerts, and an append-only evidence log served as auditor-ready markdown.
+
+- HTTP API with Bearer-key auth: create keys (admin), register sites, list runs, export evidence. Customers can't see each other's sites.
+- Plan limits enforced server-side: free (1 site, daily), site €29/mo (1 site, hourly), team €99/mo (10 sites, 15 min). Adding a site beyond the plan returns 402.
+- Stripe webhook endpoint (`/v1/billing/stripe`) with real signature verification (HMAC-SHA256, timestamp tolerance) upgrades a key's plan on `checkout.session.completed`. Unsigned events are rejected unless explicitly allowed for local dev.
+- State is a data directory: `keys.json`, `sites.json`, and append-only `runs.jsonl`. No database, no native dependencies. Survives restarts; see MONITOR.md for deployment.
+- 57 tests, up from 40, including the full HTTP API exercised over a real socket.
+
 ## 0.2.0 — 2026-06-11
 
 - New `a50 mark <files...>` command embeds machine-readable AI marking (IPTC `digitalSourceType: trainedAlgorithmicMedia` XMP) directly into PNG and JPEG files. Pure Node, no native dependencies. `--check` verifies existing marks, `--model` and `--provider` record provenance.
