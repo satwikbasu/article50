@@ -1,4 +1,5 @@
 .env
+LAUNCH.md
 node_modules/
 dist/
 coverage/
