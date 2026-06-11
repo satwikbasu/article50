@@ -1,0 +1,9 @@
+{
+  "name": "acme-support",
+  "version": "2.3.0",
+  "dependencies": {
+    "openai": "^4.80.0",
+    "ai": "^4.1.0",
+    "react": "^18.3.0"
+  }
+}
