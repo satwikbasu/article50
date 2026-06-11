@@ -14,5 +14,6 @@ export {
   MARKING_HTTP_HEADER,
 } from './generate.js';
 export { renderTerminal, renderMarkdown, renderJson } from './report.js';
+export { renderSarif } from './sarif.js';
 export { OBLIGATIONS, daysUntil, deadlineLabel } from './deadlines.js';
 export type { Obligation, Art50Category } from './deadlines.js';

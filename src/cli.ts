@@ -6,6 +6,7 @@ import pc from 'picocolors';
 import { scan } from './scanner.js';
 import { classify } from './classify.js';
 import { renderJson, renderMarkdown, renderTerminal } from './report.js';
+import { renderSarif } from './sarif.js';
 import { auditFile, auditUrl, type AuditResult } from './audit.js';
 import {
   DISCLOSURE_STRINGS,
@@ -29,8 +30,9 @@ program
   .description('Scan a codebase for AI surfaces that trigger Article 50 obligations')
   .option('--json', 'output JSON instead of the terminal report')
   .option('--report <file>', 'also write a markdown report to <file>')
+  .option('--sarif <file>', 'also write a SARIF 2.1.0 log to <file> (GitHub code scanning)')
   .option('--ci', 'exit with code 1 when action is required (for CI gates)')
-  .action((dir: string, opts: { json?: boolean; report?: string; ci?: boolean }) => {
+  .action((dir: string, opts: { json?: boolean; report?: string; sarif?: string; ci?: boolean }) => {
     const root = resolve(dir);
     const assessment = classify(scan(root));
 
@@ -42,6 +44,10 @@ program
     if (opts.report) {
       writeFileSync(opts.report, renderMarkdown(assessment));
       console.error(pc.dim(`Markdown report written to ${opts.report}`));
+    }
+    if (opts.sarif) {
+      writeFileSync(opts.sarif, renderSarif(assessment));
+      console.error(pc.dim(`SARIF log written to ${opts.sarif}`));
     }
     if (opts.ci && assessment.actionRequired) {
       process.exitCode = 1;

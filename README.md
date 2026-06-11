@@ -70,7 +70,13 @@ Fail the build when an AI surface ships without transparency coverage:
 - run: npx article50 audit https://staging.your-app.com --ci
 ```
 
-Machine-readable output for your own tooling: `a50 scan --json`, `a50 scan --report compliance.md`.
+Machine-readable output for your own tooling: `a50 scan --json`, `a50 scan --report compliance.md`, and `a50 scan --sarif a50.sarif` for the GitHub Security tab:
+
+```yaml
+- run: npx article50 scan --sarif a50.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with: { sarif_file: a50.sarif }
+```
 
 ## Library API
 
