@@ -41,7 +41,7 @@ export function renderTerminal(assessment: ComplianceAssessment, now: Date = new
     if (findings.length > 0) {
       const shown = maxFindingsShown(findings.length);
       for (const f of findings.slice(0, shown)) {
-        push(`      ${pc.dim('→')} ${f.file}:${f.line}  ${pc.dim(`[${f.title}]`)}`);
+        push(`      ${pc.dim('→')} ${f.file}:${f.line}  ${pc.dim(`[${f.title} · ${f.confidence}]`)}`);
       }
       if (findings.length > shown) push(pc.dim(`      … and ${findings.length - shown} more`));
     }

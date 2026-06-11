@@ -2,8 +2,14 @@ export { scan, scanFile } from './scanner.js';
 export type { ScanResult, Finding, Evidence } from './scanner.js';
 export { classify } from './classify.js';
 export type { ComplianceAssessment, ObligationAssessment, ObligationStatus } from './classify.js';
-export { auditHtml, auditFile, auditUrl } from './audit.js';
-export type { AuditResult, AuditCheck } from './audit.js';
+export type { ScanOptions } from './scanner.js';
+export { auditHtml, auditFile, auditUrl, auditSite, extractLinks } from './audit.js';
+export type { AuditResult, AuditCheck, SiteAuditResult } from './audit.js';
+export { markPng, markJpeg, markMedia, markFile, checkFile, isMarked, buildXmpPacket, sniffMediaType, TRAINED_ALGORITHMIC_MEDIA } from './mark.js';
+export type { MediaMarkOptions, MarkFileResult } from './mark.js';
+export { loadConfig, CONFIG_FILENAME } from './config.js';
+export type { A50Config, CustomDetectorConfig } from './config.js';
+export type { Confidence, Detector, DetectorKind } from './rules/detectors.js';
 export {
   disclosureHtml,
   disclosureReact,

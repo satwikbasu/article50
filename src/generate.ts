@@ -1,15 +1,35 @@
 import { OBLIGATIONS } from './deadlines.js';
 
-/** Localized Art. 50(1) disclosure strings (the eight most-spoken EU languages). */
+/**
+ * Localized Art. 50(1) disclosure strings — all 24 official EU languages.
+ * Machine-quality translations: have a native speaker review before launch
+ * in markets where precision matters.
+ */
 export const DISCLOSURE_STRINGS: Record<string, string> = {
-  en: 'You are interacting with an AI system. Responses are generated automatically.',
+  bg: 'Вие взаимодействате със система с изкуствен интелект. Отговорите се генерират автоматично.',
+  cs: 'Komunikujete se systémem umělé inteligence. Odpovědi jsou generovány automaticky.',
+  da: 'Du interagerer med et AI-system. Svar genereres automatisk.',
   de: 'Sie interagieren mit einem KI-System. Antworten werden automatisch generiert.',
-  fr: "Vous interagissez avec un système d'IA. Les réponses sont générées automatiquement.",
+  el: 'Αλληλεπιδράτε με ένα σύστημα τεχνητής νοημοσύνης. Οι απαντήσεις δημιουργούνται αυτόματα.',
+  en: 'You are interacting with an AI system. Responses are generated automatically.',
   es: 'Está interactuando con un sistema de IA. Las respuestas se generan automáticamente.',
+  et: 'Te suhtlete tehisintellekti süsteemiga. Vastused genereeritakse automaatselt.',
+  fi: 'Olet vuorovaikutuksessa tekoälyjärjestelmän kanssa. Vastaukset luodaan automaattisesti.',
+  fr: "Vous interagissez avec un système d'IA. Les réponses sont générées automatiquement.",
+  ga: 'Tá tú ag idirghníomhú le córas intleachta saorga. Gintear freagraí go huathoibríoch.',
+  hr: 'Komunicirate sa sustavom umjetne inteligencije. Odgovori se generiraju automatski.',
+  hu: 'Ön egy mesterséges intelligencia rendszerrel kommunikál. A válaszok automatikusan készülnek.',
   it: 'Stai interagendo con un sistema di IA. Le risposte sono generate automaticamente.',
+  lt: 'Jūs bendraujate su dirbtinio intelekto sistema. Atsakymai generuojami automatiškai.',
+  lv: 'Jūs sazināties ar mākslīgā intelekta sistēmu. Atbildes tiek ģenerētas automātiski.',
+  mt: "Qed tinteraġixxi ma' sistema ta' intelliġenza artifiċjali. It-tweġibiet jiġu ġġenerati awtomatikament.",
   nl: 'U communiceert met een AI-systeem. Antwoorden worden automatisch gegenereerd.',
   pl: 'Rozmawiasz z systemem AI. Odpowiedzi są generowane automatycznie.',
   pt: 'Está a interagir com um sistema de IA. As respostas são geradas automaticamente.',
+  ro: 'Interacționați cu un sistem de inteligență artificială. Răspunsurile sunt generate automat.',
+  sk: 'Komunikujete so systémom umelej inteligencie. Odpovede sa generujú automaticky.',
+  sl: 'Komunicirate s sistemom umetne inteligence. Odgovori se ustvarjajo samodejno.',
+  sv: 'Du interagerar med ett AI-system. Svaren genereras automatiskt.',
 };
 
 export function disclosureHtml(lang = 'en'): string {

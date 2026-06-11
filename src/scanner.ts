@@ -1,17 +1,34 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
-import { DETECTORS, EVIDENCE_DETECTORS, type Detector, type DetectorKind } from './rules/detectors.js';
+import {
+  CONFIDENCE_ORDER,
+  DETECTORS,
+  EVIDENCE_DETECTORS,
+  detectorConfidence,
+  type Confidence,
+  type Detector,
+  type DetectorKind,
+} from './rules/detectors.js';
+import { EMPTY_CONFIG, loadConfig, type A50Config } from './config.js';
 import type { Art50Category } from './deadlines.js';
 
 export interface Finding {
   detectorId: string;
   title: string;
   kind: DetectorKind;
+  confidence: Confidence;
   categories: Art50Category[];
   file: string;
   line: number;
   excerpt: string;
   hint: string;
+}
+
+export interface ScanOptions {
+  /** Drop findings below this confidence. */
+  minConfidence?: Confidence;
+  /** Override config loading (defaults to a50.config.json at the scan root). */
+  config?: A50Config;
 }
 
 export interface Evidence {
@@ -84,7 +101,11 @@ function clean(line: string): string {
   return trimmed.length > MAX_EXCERPT ? `${trimmed.slice(0, MAX_EXCERPT)}…` : trimmed;
 }
 
-export function scanFile(root: string, filePath: string): { findings: Finding[]; evidence: Evidence[] } {
+export function scanFile(
+  root: string,
+  filePath: string,
+  detectors: Detector[] = DETECTORS,
+): { findings: Finding[]; evidence: Evidence[] } {
   const findings: Finding[] = [];
   const evidence: Evidence[] = [];
   let content: string;
@@ -101,13 +122,14 @@ export function scanFile(root: string, filePath: string): { findings: Finding[];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
     if (line.length > 2000) continue; // skip embedded blobs
-    for (const detector of DETECTORS) {
+    for (const detector of detectors) {
       if (!detectorApplies(detector, ext)) continue;
       if (detector.pattern.test(line)) {
         findings.push({
           detectorId: detector.id,
           title: detector.title,
           kind: detector.kind,
+          confidence: detectorConfidence(detector),
           categories: detector.categories,
           file: rel,
           line: i + 1,
@@ -135,15 +157,25 @@ export function scanFile(root: string, filePath: string): { findings: Finding[];
 /** Cap repeat findings per detector+file so one chatty file doesn't flood the report. */
 const MAX_PER_DETECTOR_FILE = 3;
 
-export function scan(root: string): ScanResult {
-  const files = listFiles(root);
+export function scan(root: string, options: ScanOptions = {}): ScanResult {
+  const config = options.config ?? safeLoadConfig(root);
+  const detectors = [
+    ...DETECTORS.filter((d) => !config.disableDetectors.includes(d.id)),
+    ...config.customDetectors,
+  ];
+  const minRank = options.minConfidence ? CONFIDENCE_ORDER[options.minConfidence] : 0;
+
+  const files = listFiles(root).filter(
+    (f) => !config.ignorePaths.some((p) => relative(root, f).includes(p)),
+  );
   const findings: Finding[] = [];
   const evidence: Evidence[] = [];
   const counts = new Map<string, number>();
 
   for (const file of files) {
-    const result = scanFile(root, file);
+    const result = scanFile(root, file, detectors);
     for (const f of result.findings) {
+      if (CONFIDENCE_ORDER[f.confidence] < minRank) continue;
       const key = `${f.detectorId}:${f.file}`;
       const n = counts.get(key) ?? 0;
       if (n < MAX_PER_DETECTOR_FILE) {
@@ -155,4 +187,14 @@ export function scan(root: string): ScanResult {
   }
 
   return { root, filesScanned: files.length, findings, evidence };
+}
+
+/** Config errors should fail loudly; a missing file is fine (handled in loadConfig). */
+function safeLoadConfig(root: string): A50Config {
+  try {
+    return loadConfig(root);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('a50.config.json')) throw err;
+    return EMPTY_CONFIG;
+  }
 }

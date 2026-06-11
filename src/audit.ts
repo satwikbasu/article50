@@ -96,14 +96,74 @@ export function auditFile(path: string): AuditResult {
   return auditHtml(readFileSync(path, 'utf8'), path);
 }
 
-export async function auditUrl(url: string): Promise<AuditResult> {
+async function fetchHtml(url: string): Promise<string> {
   const res = await fetch(url, {
-    headers: { 'user-agent': 'article50-audit/0.1 (+https://github.com/article50)' },
+    headers: { 'user-agent': 'article50-audit/0.2 (+https://github.com/satwikbasu/article50)' },
     redirect: 'follow',
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     throw new Error(`Fetch failed for ${url}: HTTP ${res.status}`);
   }
-  return auditHtml(await res.text(), url);
+  return res.text();
+}
+
+export async function auditUrl(url: string): Promise<AuditResult> {
+  return auditHtml(await fetchHtml(url), url);
+}
+
+/** Same-origin links worth crawling (no assets, anchors, or mailto). */
+export function extractLinks(html: string, baseUrl: string): string[] {
+  const base = new URL(baseUrl);
+  const out = new Set<string>();
+  for (const match of html.matchAll(/<a\s[^>]*href=["']([^"'#]+)["']/gi)) {
+    const href = match[1];
+    if (!href || /^(mailto:|tel:|javascript:)/i.test(href)) continue;
+    let url: URL;
+    try {
+      url = new URL(href, base);
+    } catch {
+      continue;
+    }
+    if (url.origin !== base.origin) continue;
+    if (/\.(png|jpe?g|gif|svg|webp|css|js|ico|pdf|zip|mp4|webm|woff2?)$/i.test(url.pathname)) continue;
+    url.hash = '';
+    out.add(url.toString());
+  }
+  return [...out];
+}
+
+export interface SiteAuditResult {
+  start: string;
+  pages: AuditResult[];
+  errors: Array<{ url: string; error: string }>;
+  passed: boolean;
+}
+
+/** Breadth-first audit of same-origin pages, starting from `startUrl`. */
+export async function auditSite(startUrl: string, maxPages = 10): Promise<SiteAuditResult> {
+  const queue: string[] = [startUrl];
+  const seen = new Set<string>([startUrl]);
+  const pages: AuditResult[] = [];
+  const errors: Array<{ url: string; error: string }> = [];
+
+  while (queue.length > 0 && pages.length + errors.length < maxPages) {
+    const url = queue.shift() as string;
+    let html: string;
+    try {
+      html = await fetchHtml(url);
+    } catch (err) {
+      errors.push({ url, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    pages.push(auditHtml(html, url));
+    for (const link of extractLinks(html, url)) {
+      if (!seen.has(link)) {
+        seen.add(link);
+        queue.push(link);
+      }
+    }
+  }
+
+  return { start: startUrl, pages, errors, passed: pages.length > 0 && pages.every((p) => p.passed) };
 }

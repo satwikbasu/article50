@@ -2,6 +2,23 @@ import type { Art50Category } from '../deadlines.js';
 
 export type DetectorKind = 'sdk' | 'http-api' | 'ui-widget' | 'dependency';
 
+/**
+ * How likely a match is to be a real, user-facing AI surface.
+ * high   — unambiguous fingerprint (SDK import, provider URL, declared dependency)
+ * medium — strong hint that needs a human look (chat UI lib, generic generation terms)
+ * low    — keyword-grade signal, expect false positives
+ */
+export type Confidence = 'high' | 'medium' | 'low';
+
+export const CONFIDENCE_ORDER: Record<Confidence, number> = { high: 3, medium: 2, low: 1 };
+
+const DEFAULT_CONFIDENCE: Record<DetectorKind, Confidence> = {
+  sdk: 'high',
+  dependency: 'high',
+  'http-api': 'high',
+  'ui-widget': 'medium',
+};
+
 export interface Detector {
   id: string;
   title: string;
@@ -11,6 +28,12 @@ export interface Detector {
   categories: Art50Category[];
   kind: DetectorKind;
   hint: string;
+  /** Defaults by kind (see DEFAULT_CONFIDENCE); set explicitly for noisy patterns. */
+  confidence?: Confidence;
+}
+
+export function detectorConfidence(d: Pick<Detector, 'kind' | 'confidence'>): Confidence {
+  return d.confidence ?? DEFAULT_CONFIDENCE[d.kind];
 }
 
 const JS = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'vue', 'svelte', 'astro'];
@@ -162,6 +185,7 @@ export const DETECTORS: Detector[] = [
     pattern: /(images\.generate|dall-e-[23]|gpt-image-1|api\.stability\.ai|replicate\.com\/|replicate\.run|fal\.ai|api\.midjourney|black-forest-labs|flux-pro|stable-diffusion)/i,
     categories: ['synthetic-content', 'deepfake-text'],
     kind: 'http-api',
+    confidence: 'medium',
     hint: 'AI image generation — outputs must carry machine-readable AI marking.',
   },
   {
@@ -171,6 +195,7 @@ export const DETECTORS: Detector[] = [
     pattern: /(api\.elevenlabs\.io|elevenlabs|audio\.speech|text[-_]?to[-_]?speech|tts-1|play\.ht|api\.murf\.ai|resemble\.ai)/i,
     categories: ['synthetic-content', 'deepfake-text'],
     kind: 'http-api',
+    confidence: 'medium',
     hint: 'AI voice/audio generation — synthetic audio must be marked; voice clones are deepfakes.',
   },
   {
@@ -191,6 +216,7 @@ export const DETECTORS: Detector[] = [
     pattern: /(api\.hume\.ai|hume[-_]?ai|affectiva|emotion[-_]?recognition|detect[-_]?emotion|DetectFaces.*Emotions|biometric[-_]?categori[sz]ation)/i,
     categories: ['emotion-biometric'],
     kind: 'http-api',
+    confidence: 'low',
     hint: 'Emotion recognition / biometric categorisation — affected persons must be informed.',
   },
 
