@@ -22,6 +22,23 @@ describe('auditHtml', () => {
     expect(result.checks.every((c) => c.passed)).toBe(true);
   });
 
+  it('passes a page with no AI signals at all instead of failing marking checks', () => {
+    const html = '<html><head><title>Plain bakery site</title></head><body><h1>Fresh bread daily</h1></body></html>';
+    const result = auditHtml(html, 'bakery');
+    expect(result.aiSurfaceDetected).toBe(false);
+    expect(result.passed).toBe(true);
+    const signals = result.checks.find((c) => c.id === 'ai-content-signals');
+    expect(signals?.passed).toBe(true);
+    expect(signals?.detail).toMatch(/no AI/i);
+  });
+
+  it('still fails Art. 50(2) when visible AI language exists without machine-readable marking', () => {
+    const html = '<html><body><p>This article was AI-generated.</p></body></html>';
+    const result = auditHtml(html);
+    expect(result.passed).toBe(false);
+    expect(result.checks.find((c) => c.id === 'machine-readable-marking')?.passed).toBe(false);
+  });
+
   it('detects machine-readable markers independently of chat widgets', () => {
     const html = '<html><head><meta name="ai-generated" content="true"></head><body>AI-generated summary</body></html>';
     const result = auditHtml(html);

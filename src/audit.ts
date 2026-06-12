@@ -51,6 +51,21 @@ export function auditHtml(html: string, target = 'document'): AuditResult {
   const machineReadable = MACHINE_READABLE_PATTERNS.filter(([, re]) => re.test(html)).map(([name]) => name);
   const hasVisible = VISIBLE_DISCLOSURE.test(html);
 
+  // No widget, no marker, no disclosure language: nothing on this page
+  // triggers an Article 50 marking obligation we can observe. Failing the
+  // marking checks here would punish pages that simply have no AI content.
+  if (!aiSurfaceDetected && machineReadable.length === 0 && !hasVisible) {
+    checks.push({
+      id: 'ai-content-signals',
+      title: 'AI content or interaction signals on this page',
+      article: 'Art. 50',
+      passed: true,
+      detail:
+        'No AI surface, machine-readable marker, or AI disclosure language detected — no observable Article 50 marking obligation on this page. If it serves AI-generated content, mark it (a50 mark, ai-generated meta tag) and disclose visibly.',
+    });
+    return { target, aiSurfaceDetected, checks, passed: true };
+  }
+
   if (aiSurfaceDetected) {
     checks.push({
       id: 'interaction-disclosure',
