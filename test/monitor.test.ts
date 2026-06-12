@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -160,5 +160,90 @@ describe('rendered-site monitoring', () => {
     expect(plainCalls).toContain('https://plain.example/');
     expect(renderedCalls).toContain('https://spa.example/');
     expect(plainCalls).not.toContain('https://spa.example/');
+  });
+});
+
+describe('hash-chained evidence log', () => {
+  it('chains each run to the previous one and verifies clean', () => {
+    const store = new MonitorStore(dir());
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    store.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: true, failing: [] });
+    store.recordRun({ siteId: site.id, at: '2026-06-12T01:00:00Z', passed: false, failing: ['Art. 50(1)'] });
+
+    const runs = store.runsForSite(site.id);
+    expect(runs[0]?.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(runs[1]?.prevHash).toBe(runs[0]?.hash);
+    expect(store.verifyEvidenceChain(site.id)).toEqual({ ok: true, verified: 2 });
+  });
+
+  it('survives a restart and keeps chaining from the persisted tip', () => {
+    const dataDir = dir();
+    const store = new MonitorStore(dataDir);
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    store.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: true, failing: [] });
+
+    const reopened = new MonitorStore(dataDir);
+    reopened.recordRun({ siteId: site.id, at: '2026-06-12T01:00:00Z', passed: true, failing: [] });
+    expect(reopened.verifyEvidenceChain(site.id)).toEqual({ ok: true, verified: 2 });
+  });
+
+  it('detects tampering with a recorded run', () => {
+    const dataDir = dir();
+    const store = new MonitorStore(dataDir);
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    store.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: false, failing: ['Art. 50(1)'] });
+    store.recordRun({ siteId: site.id, at: '2026-06-12T01:00:00Z', passed: false, failing: ['Art. 50(1)'] });
+
+    // tamper: rewrite history so the failure looks like a pass
+    const runsPath = join(dataDir, 'runs.jsonl');
+    const tampered = readFileSync(runsPath, 'utf8').replace('"passed":false', '"passed":true');
+    writeFileSync(runsPath, tampered);
+
+    const reopened = new MonitorStore(dataDir);
+    const verdict = reopened.verifyEvidenceChain(site.id);
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('treats legacy runs without hashes as pre-chain history', () => {
+    const dataDir = dir();
+    const store = new MonitorStore(dataDir);
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    writeFileSync(
+      join(dataDir, 'runs.jsonl'),
+      JSON.stringify({ siteId: site.id, at: '2026-06-01T00:00:00Z', passed: true, failing: [] }) + '\n',
+    );
+    const reopened = new MonitorStore(dataDir);
+    reopened.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: true, failing: [] });
+    const verdict = reopened.verifyEvidenceChain(site.id);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.verified).toBe(1); // only the hashed run is verifiable
+  });
+});
+
+describe('evidence integrity rendering', () => {
+  it('includes the chain verdict and per-run hashes in the markdown log', () => {
+    const store = new MonitorStore(dir());
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    store.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: true, failing: [] });
+    const md = renderEvidence(site, store.runsForSite(site.id), store.verifyEvidenceChain(site.id));
+    expect(md).toMatch(/integrity.*verified.*1/i);
+    expect(md).toMatch(/sha-?256/i);
+    const hash = store.runsForSite(site.id)[0]?.hash ?? '';
+    expect(md).toContain(hash.slice(0, 12));
+  });
+
+  it('shouts when the chain does not verify', () => {
+    const store = new MonitorStore(dir());
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://a.example', 3600);
+    store.recordRun({ siteId: site.id, at: '2026-06-12T00:00:00Z', passed: true, failing: [] });
+    const md = renderEvidence(site, store.runsForSite(site.id), { ok: false, verified: 0, reason: 'content hash mismatch at 2026-06-12T00:00:00Z' });
+    expect(md).toMatch(/INTEGRITY/);
+    expect(md).toContain('content hash mismatch');
   });
 });

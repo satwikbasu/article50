@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { MonitorError, MonitorStore, PLAN_LIMITS, renderEvidence, type Plan } from './store.js';
+import { RateLimiter, type RateLimiterOptions } from './ratelimit.js';
 
 export interface MonitorServerOptions {
   store: MonitorStore;
@@ -10,6 +11,8 @@ export interface MonitorServerOptions {
   stripeWebhookSecret?: string;
   /** Accept unsigned Stripe events (local development only). */
   allowInsecureStripe?: boolean;
+  /** Token-bucket limits per API key / client IP. False disables. Default: 60 burst, 1/s sustained. */
+  rateLimit?: RateLimiterOptions | false;
   log?: (line: string) => void;
 }
 
@@ -67,12 +70,21 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
   const log = options.log ?? (() => undefined);
   const adminToken = options.adminToken ?? `a50adm_${randomBytes(24).toString('hex')}`;
 
+  const limiter =
+    options.rateLimit === false ? undefined : new RateLimiter(options.rateLimit ?? { capacity: 60, refillPerSecond: 1 });
+
   const handle = async (ctx: Ctx): Promise<void> => {
     const { req, res, url, body } = ctx;
     const route = `${req.method} ${url.pathname}`;
 
     if (route === 'GET /healthz') {
       return json(res, 200, { ok: true, sites: store.allSites().length });
+    }
+
+    // One bucket per credential; unauthenticated callers share their IP's bucket.
+    if (limiter) {
+      const caller = bearer(req) ?? req.socket.remoteAddress ?? 'unknown';
+      if (!limiter.allow(caller)) throw new MonitorError(429, 'rate limit exceeded — slow down and retry');
     }
 
     if (route === 'GET /') {
@@ -88,6 +100,7 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
           '  GET    /v1/sites/:id/runs                                              (Bearer API key)',
           '  GET    /v1/sites/:id/evidence                                          (Bearer API key)',
           '  POST   /v1/keys                   {plan, label?}                       (Bearer admin token)',
+          '  POST   /v1/keys/rotate            replace your key, keep plan + sites  (Bearer API key)',
           '  POST   /v1/billing/stripe         Stripe webhook (checkout.session.completed, customer.subscription.deleted)',
           '',
           'Plans: free (1 site, daily) · site €29/mo (1 site, hourly) · team €99/mo (10 sites, 15 min)',
@@ -145,6 +158,13 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
     const apiKey = key ? store.getKey(key) : undefined;
     if (!apiKey) throw new MonitorError(401, 'API key required (Authorization: Bearer a50_...)');
 
+    if (route === 'POST /v1/keys/rotate') {
+      const fresh = store.rotateKey(apiKey.key);
+      if (!fresh) throw new MonitorError(500, 'rotation failed');
+      log(`rotated key (${fresh.label || 'unlabelled'})`);
+      return json(res, 200, { ...fresh, limits: PLAN_LIMITS[fresh.plan] });
+    }
+
     if (route === 'GET /v1/sites') {
       const sites = store.listSites(apiKey.key).map((s) => ({ ...s, ownerKey: undefined, lastRun: store.lastRun(s.id) }));
       return json(res, 200, { plan: apiKey.plan, limits: PLAN_LIMITS[apiKey.plan], sites });
@@ -178,7 +198,7 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
       }
       if (req.method === 'GET' && sub === '/evidence') {
         res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
-        res.end(renderEvidence(site, store.runsForSite(site.id)));
+        res.end(renderEvidence(site, store.runsForSite(site.id), store.verifyEvidenceChain(site.id)));
         return;
       }
     }

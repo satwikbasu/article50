@@ -18,11 +18,12 @@ Put it behind any TLS-terminating reverse proxy (Caddy, nginx, a PaaS like Fly o
 | Route | Auth | What it does |
 | --- | --- | --- |
 | `POST /v1/keys` `{plan, label?}` | admin token | create a customer API key |
+| `POST /v1/keys/rotate` | API key | replace your key's secret; plan, label, and sites carry over, the old secret dies immediately |
 | `POST /v1/sites` `{url, intervalSeconds?, webhook?, render?}` | API key | register a site; interval is clamped to the plan minimum; `render: true` audits the rendered DOM |
 | `GET /v1/sites` | API key | list your sites with last run status |
 | `DELETE /v1/sites/:id` | API key | stop monitoring |
 | `GET /v1/sites/:id/runs` | API key | run history as JSON |
-| `GET /v1/sites/:id/evidence` | API key | the evidence log as markdown, ready for an auditor |
+| `GET /v1/sites/:id/evidence` | API key | the evidence log as markdown, ready for an auditor, with hash-chain integrity verification |
 | `POST /v1/billing/stripe` | Stripe signature | plan upgrades on checkout completion, downgrade to free on subscription deletion |
 | `GET /healthz` | none | liveness |
 
@@ -35,6 +36,14 @@ Plan limits, enforced server-side:
 | team (€99/mo) | 10 | 15 minutes |
 
 When a check's failure set changes (new failing article, new error), Monitor POSTs `{"text": "..."}` to the site's webhook. That format works with Slack incoming webhooks as-is.
+
+## Evidence integrity
+
+Every recorded check is hash-chained: each entry's SHA-256 covers its content plus the previous entry's hash. Editing any past result breaks every later hash, and the evidence export verifies the whole chain on each request — a clean log says so, a broken one is flagged loudly with the first bad entry. Logs from before this feature verify from their first hashed entry onward.
+
+## Rate limiting
+
+Every route except `/healthz` is rate-limited per API key (or per client IP when unauthenticated): 60-request burst, then 1 request/second sustained, HTTP 429 beyond that. Tune or disable via `createMonitorServer({ rateLimit })` if you embed the server.
 
 ## Stripe setup
 

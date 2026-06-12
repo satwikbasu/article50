@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-06-12
+
+Monitor hardening: the evidence log becomes tamper-evident and the API grows teeth.
+
+- **Hash-chained evidence log.** Every recorded check now carries a SHA-256 hash covering its content plus the previous entry's hash. The evidence export verifies the full chain on every request: a clean log states exactly what was verified, a tampered one is flagged loudly with the first broken entry. Existing logs keep working — runs recorded before chaining verify from the first hashed entry onward.
+- **Rate limiting.** Token bucket per API key (per client IP when unauthenticated): 60-request burst, 1/s sustained, 429 beyond. `/healthz` stays exempt for load balancers. Configurable or disableable via `createMonitorServer({ rateLimit })`.
+- **Key rotation.** `POST /v1/keys/rotate` (Bearer your own key) issues a fresh secret; plan, label, and registered sites carry over and the old secret stops working immediately.
+- 95 tests, up from 83. All three features verified live against a running server: chain verification in the evidence export, 60×200 then 429s, rotation flipping old/new key auth on the spot.
+
 ## 0.6.0 — 2026-06-12
 
 Detection quality: the scanner now checks whether imports are actually used.

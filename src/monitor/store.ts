@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 export type Plan = 'free' | 'site' | 'team';
 
@@ -40,6 +40,10 @@ export interface AuditRun {
   /** Failing check articles, e.g. ["Art. 50(1)"]; empty when passed or errored. */
   failing: string[];
   error?: string;
+  /** Hash of the previous run for this site; absent on the first chained run. */
+  prevHash?: string;
+  /** SHA-256 over (prevHash + this run's content). Set by recordRun. */
+  hash?: string;
 }
 
 /**
@@ -97,6 +101,29 @@ export class MonitorStore {
 
   getKey(key: string): ApiKey | undefined {
     return this.keys.get(key);
+  }
+
+  /**
+   * Replace a key's secret in place: same plan and label, sites move over,
+   * the old secret stops working immediately.
+   */
+  rotateKey(oldKey: string): ApiKey | undefined {
+    const existing = this.keys.get(oldKey);
+    if (!existing) return undefined;
+    const fresh: ApiKey = {
+      key: `a50_${randomBytes(24).toString('hex')}`,
+      plan: existing.plan,
+      label: existing.label,
+      createdAt: new Date().toISOString(),
+    };
+    this.keys.delete(oldKey);
+    this.keys.set(fresh.key, fresh);
+    for (const site of this.sites.values()) {
+      if (site.ownerKey === oldKey) site.ownerKey = fresh.key;
+    }
+    this.persistKeys();
+    this.persistSites();
+    return fresh;
   }
 
   setPlan(key: string, plan: Plan): ApiKey | undefined {
@@ -172,11 +199,51 @@ export class MonitorStore {
     return true;
   }
 
-  // ---- runs (append-only) ----
+  // ---- runs (append-only, hash-chained per site) ----
+
+  private runHash(prevHash: string, run: AuditRun): string {
+    const payload = JSON.stringify([prevHash, run.siteId, run.at, run.passed, run.failing, run.error ?? null]);
+    return createHash('sha256').update(payload).digest('hex');
+  }
+
+  private lastHashedRun(siteId: string): AuditRun | undefined {
+    for (let i = this.runs.length - 1; i >= 0; i--) {
+      const run = this.runs[i];
+      if (run?.siteId === siteId && run.hash) return run;
+    }
+    return undefined;
+  }
 
   recordRun(run: AuditRun): void {
+    const prevHash = this.lastHashedRun(run.siteId)?.hash ?? '';
+    if (prevHash) run.prevHash = prevHash;
+    run.hash = this.runHash(prevHash, run);
     this.runs.push(run);
     appendFileSync(join(this.dataDir, 'runs.jsonl'), `${JSON.stringify(run)}\n`);
+  }
+
+  /**
+   * Recompute every hash in a site's chain. Runs recorded before chaining
+   * existed (no hash) are tolerated as a prefix only — an unhashed run after
+   * chained history is itself evidence of tampering.
+   */
+  verifyEvidenceChain(siteId: string): { ok: boolean; verified: number; reason?: string } {
+    let prevHash = '';
+    let verified = 0;
+    let inChain = false;
+    for (const run of this.runs) {
+      if (run.siteId !== siteId) continue;
+      if (!run.hash) {
+        if (inChain) return { ok: false, verified, reason: `unhashed run at ${run.at} after chained history` };
+        continue;
+      }
+      inChain = true;
+      if ((run.prevHash ?? '') !== prevHash) return { ok: false, verified, reason: `broken chain link at ${run.at}` };
+      if (run.hash !== this.runHash(prevHash, run)) return { ok: false, verified, reason: `content hash mismatch at ${run.at}` };
+      prevHash = run.hash;
+      verified++;
+    }
+    return { ok: true, verified };
   }
 
   runsForSite(siteId: string, limit = 500): AuditRun[] {
@@ -201,20 +268,34 @@ export class MonitorError extends Error {
   }
 }
 
+export interface ChainVerdict {
+  ok: boolean;
+  verified: number;
+  reason?: string;
+}
+
 /** Markdown evidence log an auditor can read without explanation. */
-export function renderEvidence(site: Site, runs: AuditRun[]): string {
+export function renderEvidence(site: Site, runs: AuditRun[], chain?: ChainVerdict): string {
   const lines: string[] = [];
   lines.push(`# Compliance evidence log — ${site.url}`);
   lines.push('');
   lines.push(`Monitored by article50 Monitor. Site registered ${site.createdAt}; checks run every ${site.intervalSeconds}s.`);
   lines.push(`This log is append-only: ${runs.length} recorded check(s).`);
+  if (chain) {
+    lines.push('');
+    lines.push(
+      chain.ok
+        ? `Integrity: SHA-256 hash chain verified for ${chain.verified} check(s). Each entry's hash covers its content plus the previous entry's hash, so past results cannot be edited without breaking every later hash.`
+        : `**INTEGRITY FAILURE**: the SHA-256 hash chain does not verify (${chain.reason ?? 'unknown'}). ${chain.verified} check(s) verified before the break. Treat this log as altered.`,
+    );
+  }
   lines.push('');
-  lines.push('| Checked at (UTC) | Result | Failing obligations |');
-  lines.push('| --- | --- | --- |');
+  lines.push('| Checked at (UTC) | Result | Failing obligations | Entry hash |');
+  lines.push('| --- | --- | --- | --- |');
   for (const run of runs) {
     const result = run.error ? 'ERROR' : run.passed ? 'PASS' : 'FAIL';
     const detail = run.error ?? (run.failing.length ? run.failing.join(', ') : '');
-    lines.push(`| ${run.at} | ${result} | ${detail} |`);
+    lines.push(`| ${run.at} | ${result} | ${detail} | ${run.hash ? run.hash.slice(0, 12) : 'pre-chain'} |`);
   }
   lines.push('');
   lines.push('Generated by article50 — a technical aid, not legal advice.');

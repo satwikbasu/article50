@@ -183,3 +183,69 @@ describe('render flag over the API', () => {
     expect((JSON.parse(created.body) as { render?: boolean }).render).toBe(true);
   });
 });
+
+describe('rate limiting', () => {
+  it('returns 429 once a caller exhausts its bucket, without affecting others', async () => {
+    const rlStore = new MonitorStore(mkdtempSync(join(tmpdir(), 'a50-rl-')));
+    const created = createMonitorServer({
+      store: rlStore,
+      adminToken: 'admintok',
+      rateLimit: { capacity: 3, refillPerSecond: 0 },
+    });
+    await new Promise<void>((r) => created.server.listen(0, r));
+    const rlBase = `http://127.0.0.1:${(created.server.address() as AddressInfo).port}`;
+
+    const hit = async (auth: string) =>
+      (await fetch(`${rlBase}/v1/sites`, { headers: { authorization: `Bearer ${auth}` } })).status;
+
+    const keyRes = await fetch(`${rlBase}/v1/keys`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer admintok' },
+      body: JSON.stringify({ plan: 'site' }),
+    });
+    const key = ((await keyRes.json()) as { key: string }).key;
+
+    const statuses = [await hit(key), await hit(key), await hit(key), await hit(key)];
+    expect(statuses.slice(0, 2)).toEqual([200, 200]);
+    expect(statuses[3]).toBe(429);
+
+    // healthz stays exempt and other callers are unaffected
+    expect((await fetch(`${rlBase}/healthz`)).status).toBe(200);
+    created.server.close();
+  });
+});
+
+describe('key rotation', () => {
+  it('rotates a key: same plan and sites, old key dies', async () => {
+    const rotStore = new MonitorStore(mkdtempSync(join(tmpdir(), 'a50-rot-')));
+    const created = createMonitorServer({ store: rotStore, adminToken: 'admintok2', rateLimit: false });
+    await new Promise<void>((r) => created.server.listen(0, r));
+    const rotBase = `http://127.0.0.1:${(created.server.address() as AddressInfo).port}`;
+    const post = async (path: string, auth: string, body?: unknown) =>
+      fetch(`${rotBase}${path}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${auth}` },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    const keyRes = await post('/v1/keys', 'admintok2', { plan: 'team', label: 'acme' });
+    const oldKey = ((await keyRes.json()) as { key: string }).key;
+    await post('/v1/sites', oldKey, { url: 'https://a.example' });
+
+    const rotated = await post('/v1/keys/rotate', oldKey);
+    expect(rotated.status).toBe(200);
+    const fresh = (await rotated.json()) as { key: string; plan: string; label: string };
+    expect(fresh.key).toMatch(/^a50_/);
+    expect(fresh.key).not.toBe(oldKey);
+    expect(fresh.plan).toBe('team');
+    expect(fresh.label).toBe('acme');
+
+    const oldAuth = await fetch(`${rotBase}/v1/sites`, { headers: { authorization: `Bearer ${oldKey}` } });
+    expect(oldAuth.status).toBe(401);
+
+    const newAuth = await fetch(`${rotBase}/v1/sites`, { headers: { authorization: `Bearer ${fresh.key}` } });
+    const sites = ((await newAuth.json()) as { sites: Array<{ url: string }> }).sites;
+    expect(sites.map((s) => s.url)).toContain('https://a.example/');
+    created.server.close();
+  });
+});
