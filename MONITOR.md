@@ -23,7 +23,7 @@ Put it behind any TLS-terminating reverse proxy (Caddy, nginx, a PaaS like Fly o
 | `DELETE /v1/sites/:id` | API key | stop monitoring |
 | `GET /v1/sites/:id/runs` | API key | run history as JSON |
 | `GET /v1/sites/:id/evidence` | API key | the evidence log as markdown, ready for an auditor |
-| `POST /v1/billing/stripe` | Stripe signature | plan upgrades on checkout completion |
+| `POST /v1/billing/stripe` | Stripe signature | plan upgrades on checkout completion, downgrade to free on subscription deletion |
 | `GET /healthz` | none | liveness |
 
 Plan limits, enforced server-side:
@@ -38,11 +38,11 @@ When a check's failure set changes (new failing article, new error), Monitor POS
 
 ## Stripe setup
 
-1. Create two Stripe Payment Links or Checkout sessions (site €29/mo, team €99/mo). On each, set metadata `a50_key` to the customer's API key and `a50_plan` to `site` or `team`. The cleanest flow: create the key first (`POST /v1/keys` with plan `free`), give it to the customer, and put it in the checkout metadata.
-2. Add a webhook endpoint in Stripe pointing at `https://your-host/v1/billing/stripe`, subscribed to `checkout.session.completed`.
+1. Create two Stripe Payment Links or Checkout sessions (site €29/mo, team €99/mo). On each, set metadata `a50_key` to the customer's API key and `a50_plan` to `site` or `team`. The cleanest flow: create the key first (`POST /v1/keys` with plan `free`), give it to the customer, and put it in the checkout metadata. For subscriptions, also copy the same metadata onto the subscription (`subscription_data.metadata` on the Payment Link or Checkout session) so cancellation events carry the key too.
+2. Add a webhook endpoint in Stripe pointing at `https://your-host/v1/billing/stripe`, subscribed to `checkout.session.completed` and `customer.subscription.deleted`.
 3. Set `STRIPE_WEBHOOK_SECRET` in the Monitor environment. Signatures are verified (HMAC-SHA256, 5-minute tolerance); unsigned events are rejected unless you explicitly set `A50_INSECURE_STRIPE=1` for local testing.
 
-Downgrades and cancellations aren't automated yet; handle `customer.subscription.deleted` the same way (it's a `store.setPlan(key, 'free')` call) or do it manually. That's the first thing v0.4 should add.
+Checkout completion upgrades the key to the plan in the metadata; subscription deletion downgrades it to `free`. The downgrade takes effect immediately — existing sites stay registered, but the scheduler clamps their audit interval to the free plan's daily minimum, and adding sites beyond the free limit returns 402.
 
 ## Operational notes
 

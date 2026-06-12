@@ -130,6 +130,31 @@ describe('monitor server', () => {
     });
     expect(res.status).toBe(201);
   });
+
+  it('downgrades a key to free when its Stripe subscription is deleted', async () => {
+    const event = JSON.stringify({
+      type: 'customer.subscription.deleted',
+      data: { object: { metadata: { a50_key: customerKey } } },
+    });
+    const t = Math.floor(Date.now() / 1000);
+    const v1 = createHmac('sha256', STRIPE_SECRET).update(`${t}.${event}`).digest('hex');
+
+    const res = await api('/v1/billing/stripe', {
+      method: 'POST',
+      headers: { 'stripe-signature': `t=${t},v1=${v1}` },
+      body: event,
+    });
+    expect(res.status).toBe(200);
+    expect(store.getKey(customerKey)?.plan).toBe('free');
+
+    // free plan blocks adding more sites again
+    const blocked = await api('/v1/sites', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${customerKey}` },
+      body: JSON.stringify({ url: 'https://three.example.com' }),
+    });
+    expect(blocked.status).toBe(402);
+  });
 });
 
 describe('verifyStripeSignature', () => {

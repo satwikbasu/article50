@@ -150,6 +150,17 @@ export class MonitorStore {
     return site;
   }
 
+  /**
+   * The interval the scheduler must honor: the site's stored interval, clamped
+   * to the owner's *current* plan. Keeps downgrades effective immediately
+   * without rewriting sites.
+   */
+  effectiveIntervalSeconds(site: Site): number {
+    const owner = this.keys.get(site.ownerKey);
+    const min = owner ? PLAN_LIMITS[owner.plan].minIntervalSeconds : PLAN_LIMITS.free.minIntervalSeconds;
+    return Math.max(site.intervalSeconds, min);
+  }
+
   removeSite(ownerKey: string, id: string): boolean {
     const site = this.sites.get(id);
     if (!site || site.ownerKey !== ownerKey) return false;

@@ -83,7 +83,7 @@ export function startScheduler(store: MonitorStore, options: SchedulerOptions = 
       for (const site of store.allSites()) {
         const due = nextDue.get(site.id) ?? 0;
         if (now < due) continue;
-        nextDue.set(site.id, now + site.intervalSeconds * 1000);
+        nextDue.set(site.id, now + store.effectiveIntervalSeconds(site) * 1000);
         const run = await runSiteCheck(store, site, options.auditFn, options.alertFn);
         log(
           `[${run.at}] ${run.error ? 'ERROR' : run.passed ? 'PASS' : 'FAIL'} ${site.url}${

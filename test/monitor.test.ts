@@ -64,6 +64,15 @@ describe('MonitorStore', () => {
     store.setPlan(key.key, 'team');
     expect(store.getKey(key.key)?.plan).toBe('team');
   });
+
+  it('clamps the effective interval to the owner’s current plan after a downgrade', () => {
+    const store = new MonitorStore(dir());
+    const key = store.createKey('team');
+    const site = store.addSite(key.key, 'https://a.example', 900);
+    expect(store.effectiveIntervalSeconds(site)).toBe(900);
+    store.setPlan(key.key, 'free');
+    expect(store.effectiveIntervalSeconds(site)).toBe(PLAN_LIMITS.free.minIntervalSeconds);
+  });
 });
 
 describe('runSiteCheck', () => {

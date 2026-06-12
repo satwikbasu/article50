@@ -88,7 +88,7 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
           '  GET    /v1/sites/:id/runs                                              (Bearer API key)',
           '  GET    /v1/sites/:id/evidence                                          (Bearer API key)',
           '  POST   /v1/keys                   {plan, label?}                       (Bearer admin token)',
-          '  POST   /v1/billing/stripe         Stripe webhook (checkout.session.completed)',
+          '  POST   /v1/billing/stripe         Stripe webhook (checkout.session.completed, customer.subscription.deleted)',
           '',
           'Plans: free (1 site, daily) · site €29/mo (1 site, hourly) · team €99/mo (10 sites, 15 min)',
           'Docs: https://github.com/satwikbasu/article50',
@@ -128,6 +128,13 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
         if (meta?.a50_key && plan && VALID_PLANS.has(plan)) {
           const updated = store.setPlan(meta.a50_key, plan);
           log(updated ? `upgraded key to ${plan}` : `stripe event referenced unknown key`);
+        }
+      }
+      if (event.type === 'customer.subscription.deleted') {
+        const meta = event.data?.object?.metadata;
+        if (meta?.a50_key) {
+          const updated = store.setPlan(meta.a50_key, 'free');
+          log(updated ? 'subscription cancelled — key downgraded to free' : `stripe event referenced unknown key`);
         }
       }
       return json(res, 200, { received: true });
