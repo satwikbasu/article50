@@ -123,3 +123,42 @@ describe('renderEvidence', () => {
     expect(md).toContain('| 2026-06-12T00:00:00Z | FAIL | Art. 50(2) |');
   });
 });
+
+describe('rendered-site monitoring', () => {
+  it('persists the render flag on sites', () => {
+    const dataDir = dir();
+    const store = new MonitorStore(dataDir);
+    const key = store.createKey('site');
+    const site = store.addSite(key.key, 'https://spa.example', 3600, undefined, true);
+    expect(site.render).toBe(true);
+    const reopened = new MonitorStore(dataDir);
+    expect(reopened.getSite(site.id)?.render).toBe(true);
+  });
+
+  it('scheduler routes render sites to the rendered audit fn and plain sites to the default', async () => {
+    const store = new MonitorStore(dir());
+    const key = store.createKey('team');
+    store.addSite(key.key, 'https://plain.example', 900);
+    store.addSite(key.key, 'https://spa.example', 900, undefined, true);
+
+    const plainCalls: string[] = [];
+    const renderedCalls: string[] = [];
+    const { startScheduler } = await import('../src/monitor/scheduler.js');
+    const stop = startScheduler(store, {
+      tickMs: 10,
+      auditFn: async (url) => {
+        plainCalls.push(url);
+        return auditResult(true);
+      },
+      renderedAuditFn: async (url) => {
+        renderedCalls.push(url);
+        return auditResult(true);
+      },
+    });
+    await new Promise((r) => setTimeout(r, 60));
+    stop();
+    expect(plainCalls).toContain('https://plain.example/');
+    expect(renderedCalls).toContain('https://spa.example/');
+    expect(plainCalls).not.toContain('https://spa.example/');
+  });
+});

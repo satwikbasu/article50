@@ -18,7 +18,7 @@ Put it behind any TLS-terminating reverse proxy (Caddy, nginx, a PaaS like Fly o
 | Route | Auth | What it does |
 | --- | --- | --- |
 | `POST /v1/keys` `{plan, label?}` | admin token | create a customer API key |
-| `POST /v1/sites` `{url, intervalSeconds?, webhook?}` | API key | register a site; interval is clamped to the plan minimum |
+| `POST /v1/sites` `{url, intervalSeconds?, webhook?, render?}` | API key | register a site; interval is clamped to the plan minimum; `render: true` audits the rendered DOM |
 | `GET /v1/sites` | API key | list your sites with last run status |
 | `DELETE /v1/sites/:id` | API key | stop monitoring |
 | `GET /v1/sites/:id/runs` | API key | run history as JSON |
@@ -48,5 +48,5 @@ Checkout completion upgrades the key to the plan in the metadata; subscription d
 
 - One scheduler tick runs all due sites sequentially; ticks never overlap. For hundreds of sites, raise `--tick` granularity awareness: checks are due-time based, so nothing is lost, they just queue.
 - Audit failures (timeouts, DNS) are recorded as ERROR runs in the evidence log and alert once, like any other regression.
-- The audit reads raw HTML. A site that renders its chat widget purely client-side can pass incorrectly; see the limitations table in project-context.md.
+- By default the audit reads raw HTML, which misses widgets that mount via JavaScript. Register such sites with `render: true` and install Playwright on the Monitor host (`npm install playwright && npx playwright install chromium --with-deps`). The browser launches lazily on the first rendered check and is shared across sites; without Playwright installed, rendered checks record an actionable error in the evidence log instead of a false pass.
 - Restarting the process re-checks every site once on boot (the due-times reset). With an append-only log, an extra check is noise, not damage.

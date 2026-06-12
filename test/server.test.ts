@@ -165,3 +165,21 @@ describe('verifyStripeSignature', () => {
     expect(verifyStripeSignature(payload, `t=${t},v1=${v1}`, STRIPE_SECRET)).toBe(false);
   });
 });
+
+describe('render flag over the API', () => {
+  it('accepts and returns render on site registration', async () => {
+    const keyRes = await api('/v1/keys', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ plan: 'site' }),
+    });
+    const key = (JSON.parse(keyRes.body) as { key: string }).key;
+    const created = await api('/v1/sites', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key}` },
+      body: JSON.stringify({ url: 'https://spa.example', render: true }),
+    });
+    expect(created.status).toBe(201);
+    expect((JSON.parse(created.body) as { render?: boolean }).render).toBe(true);
+  });
+});

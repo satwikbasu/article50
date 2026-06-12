@@ -28,6 +28,8 @@ export interface Site {
   url: string;
   intervalSeconds: number;
   webhook?: string;
+  /** Audit the rendered DOM (headless browser) instead of raw HTML. */
+  render?: boolean;
   createdAt: string;
 }
 
@@ -119,7 +121,7 @@ export class MonitorStore {
     return this.sites.get(id);
   }
 
-  addSite(ownerKey: string, url: string, intervalSeconds: number, webhook?: string): Site {
+  addSite(ownerKey: string, url: string, intervalSeconds: number, webhook?: string, render?: boolean): Site {
     const owner = this.keys.get(ownerKey);
     if (!owner) throw new MonitorError(401, 'unknown API key');
     const limits = PLAN_LIMITS[owner.plan];
@@ -143,6 +145,7 @@ export class MonitorStore {
       url: parsed.toString(),
       intervalSeconds: interval,
       webhook,
+      render: render || undefined,
       createdAt: new Date().toISOString(),
     };
     this.sites.set(site.id, site);

@@ -82,7 +82,7 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
           'article50 Monitor — EU AI Act Article 50 compliance monitoring',
           '',
           'API:',
-          '  POST   /v1/sites                  {url, intervalSeconds?, webhook?}   (Bearer API key)',
+          '  POST   /v1/sites                  {url, intervalSeconds?, webhook?, render?}   (Bearer API key)',
           '  GET    /v1/sites                                                       (Bearer API key)',
           '  DELETE /v1/sites/:id                                                   (Bearer API key)',
           '  GET    /v1/sites/:id/runs                                              (Bearer API key)',
@@ -151,10 +151,15 @@ export function createMonitorServer(options: MonitorServerOptions): { server: Se
     }
 
     if (route === 'POST /v1/sites') {
-      const parsed = JSON.parse(body || '{}') as { url?: string; intervalSeconds?: number; webhook?: string };
+      const parsed = JSON.parse(body || '{}') as {
+        url?: string;
+        intervalSeconds?: number;
+        webhook?: string;
+        render?: boolean;
+      };
       if (!parsed.url) throw new MonitorError(400, '"url" is required');
-      const site = store.addSite(apiKey.key, parsed.url, parsed.intervalSeconds ?? 0, parsed.webhook);
-      log(`monitoring ${site.url} every ${site.intervalSeconds}s`);
+      const site = store.addSite(apiKey.key, parsed.url, parsed.intervalSeconds ?? 0, parsed.webhook, parsed.render === true);
+      log(`monitoring ${site.url} every ${site.intervalSeconds}s${site.render ? ' (rendered)' : ''}`);
       return json(res, 201, { ...site, ownerKey: undefined });
     }
 

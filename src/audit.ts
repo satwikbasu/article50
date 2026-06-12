@@ -26,6 +26,13 @@ const CHAT_WIDGET_PATTERNS: Array<[string, RegExp]> = [
   ['Botpress', /botpress/i],
   ['Voiceflow', /voiceflow/i],
   ['Custom chat UI', /(chat-widget|chatbot|chat-window|data-chat|id=["']chat)/i],
+  // Mounted-widget DOM artifacts: what a rendered audit sees after the loader
+  // script has run and injected the actual UI.
+  ['Intercom (mounted)', /intercom-(launcher|frame|messenger|lightweight-app)/i],
+  ['Crisp (mounted)', /crisp-(chatbox|client)/i],
+  ['Drift (mounted)', /drift-(frame|widget|conductor)/i],
+  ['Tidio (mounted)', /tidio-chat/i],
+  ['Chatwoot (mounted)', /woot-widget/i],
 ];
 
 const MACHINE_READABLE_PATTERNS: Array<[string, RegExp]> = [
@@ -123,8 +130,11 @@ async function fetchHtml(url: string): Promise<string> {
   return res.text();
 }
 
-export async function auditUrl(url: string): Promise<AuditResult> {
-  return auditHtml(await fetchHtml(url), url);
+/** Fetches a URL and returns its HTML. Inject one to audit a rendered DOM. */
+export type HtmlFetcher = (url: string) => Promise<string>;
+
+export async function auditUrl(url: string, fetcher: HtmlFetcher = fetchHtml): Promise<AuditResult> {
+  return auditHtml(await fetcher(url), url);
 }
 
 /** Same-origin links worth crawling (no assets, anchors, or mailto). */
@@ -156,7 +166,11 @@ export interface SiteAuditResult {
 }
 
 /** Breadth-first audit of same-origin pages, starting from `startUrl`. */
-export async function auditSite(startUrl: string, maxPages = 10): Promise<SiteAuditResult> {
+export async function auditSite(
+  startUrl: string,
+  maxPages = 10,
+  fetcher: HtmlFetcher = fetchHtml,
+): Promise<SiteAuditResult> {
   const queue: string[] = [startUrl];
   const seen = new Set<string>([startUrl]);
   const pages: AuditResult[] = [];
@@ -166,7 +180,7 @@ export async function auditSite(startUrl: string, maxPages = 10): Promise<SiteAu
     const url = queue.shift() as string;
     let html: string;
     try {
-      html = await fetchHtml(url);
+      html = await fetcher(url);
     } catch (err) {
       errors.push({ url, error: err instanceof Error ? err.message : String(err) });
       continue;

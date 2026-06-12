@@ -25,7 +25,7 @@ Four commands, in the order you'll actually need them:
 
 **`a50 scan`** finds the AI in your codebase. It knows the fingerprints of 20+ AI SDKs and APIs (OpenAI, Anthropic, Gemini, LangChain, ElevenLabs, chat widgets, and so on) across JavaScript/TypeScript, Python, Go, Java, and dependency manifests. Each finding is mapped to its Article 50 obligation, with the file, the line, a confidence rating, and a countdown to the deadline.
 
-**`a50 audit <url>`** checks what an inspector's crawler would see on your live site: disclosure language, ai-generated meta tags, IPTC `trainedAlgorithmicMedia`, C2PA markers, JSON-LD. Add `--crawl` to walk every same-origin page.
+**`a50 audit <url>`** checks what an inspector's crawler would see on your live site: disclosure language, ai-generated meta tags, IPTC `trainedAlgorithmicMedia`, C2PA markers, JSON-LD. Add `--crawl` to walk every same-origin page. Add `--render` to audit the rendered DOM in a headless browser — this catches chat widgets that mount via JavaScript and are invisible in the raw HTML, which is most of them on single-page apps. Rendered audits need Playwright (`npm install playwright && npx playwright install chromium`); everything else works without it.
 
 **`a50 generate`** writes the fixes: a "you are talking to an AI" notice in all 24 official EU languages (HTML or React), machine-readable marking snippets, and a starter transparency policy.
 
@@ -93,7 +93,7 @@ Findings can also feed GitHub's Security tab:
 a50 watch https://your-app.com --interval 3600 --webhook https://hooks.slack.com/...
 ```
 
-`--once` makes it cron-friendly.
+`--once` makes it cron-friendly, and `--state /var/lib/a50/state.json` keeps the regression baseline across runs so a restart (or the next cron invocation) doesn't re-alert on a failure you already know about. `--render` works here too.
 
 ## Configuration
 

@@ -8,6 +8,8 @@ import { classify } from './classify.js';
 import { renderJson, renderMarkdown, renderTerminal } from './report.js';
 import { renderSarif } from './sarif.js';
 import { auditFile, auditSite, auditUrl, type AuditResult } from './audit.js';
+import { createRenderedFetcher, type RenderedFetcher } from './render.js';
+import { loadWatchState, saveWatchState } from './watchstate.js';
 import { checkFile, markFile } from './mark.js';
 import type { Confidence } from './rules/detectors.js';
 import {
@@ -72,9 +74,27 @@ program
   .option('--json', 'output JSON')
   .option('--crawl', 'follow same-origin links and audit every page found')
   .option('--max-pages <n>', 'page limit when crawling', '10')
+  .option('--render', 'audit the rendered DOM in a headless browser (needs playwright)')
   .option('--ci', 'exit with code 1 when checks fail')
-  .action(async (target: string, opts: { json?: boolean; crawl?: boolean; maxPages: string; ci?: boolean }) => {
+  .action(async (target: string, opts: { json?: boolean; crawl?: boolean; maxPages: string; render?: boolean; ci?: boolean }) => {
     const isUrl = /^https?:\/\//i.test(target);
+
+    let rendered: RenderedFetcher | undefined;
+    if (opts.render) {
+      if (!isUrl) {
+        console.error(pc.red('--render requires a URL target'));
+        process.exitCode = 2;
+        return;
+      }
+      try {
+        rendered = await createRenderedFetcher();
+      } catch (err) {
+        console.error(pc.red(err instanceof Error ? err.message : String(err)));
+        process.exitCode = 2;
+        return;
+      }
+    }
+    const done = async () => rendered?.close();
 
     if (opts.crawl) {
       if (!isUrl) {
@@ -82,7 +102,8 @@ program
         process.exitCode = 2;
         return;
       }
-      const site = await auditSite(target, Number(opts.maxPages) || 10);
+      const site = await auditSite(target, Number(opts.maxPages) || 10, rendered?.fetch);
+      await done();
       if (opts.json) {
         console.log(JSON.stringify(site, null, 2));
       } else {
@@ -105,11 +126,13 @@ program
 
     let result: AuditResult;
     try {
-      result = isUrl ? await auditUrl(target) : auditFile(target);
+      result = isUrl ? await auditUrl(target, rendered?.fetch) : auditFile(target);
     } catch (err) {
       console.error(pc.red(`Audit failed: ${err instanceof Error ? err.message : String(err)}`));
       process.exitCode = 2;
       return;
+    } finally {
+      await done();
     }
 
     if (opts.json) {
@@ -178,15 +201,28 @@ program
   .option('--interval <seconds>', 'seconds between audits', '3600')
   .option('--webhook <url>', 'POST a Slack-compatible JSON alert on regression')
   .option('--once', 'run a single iteration (useful for cron)')
-  .action(async (url: string, opts: { interval: string; webhook?: string; once?: boolean }) => {
+  .option('--state <file>', 'persist the regression baseline so restarts and cron runs do not re-alert')
+  .option('--render', 'audit the rendered DOM in a headless browser (needs playwright)')
+  .action(async (url: string, opts: { interval: string; webhook?: string; once?: boolean; state?: string; render?: boolean }) => {
     const intervalMs = Math.max(30, Number(opts.interval) || 3600) * 1000;
-    let lastFailing: string | undefined;
+    let lastFailing: string | undefined = opts.state ? loadWatchState(opts.state) : undefined;
+
+    let rendered: RenderedFetcher | undefined;
+    if (opts.render) {
+      try {
+        rendered = await createRenderedFetcher();
+      } catch (err) {
+        console.error(pc.red(err instanceof Error ? err.message : String(err)));
+        process.exitCode = 2;
+        return;
+      }
+    }
 
     const iteration = async () => {
       const stamp = new Date().toISOString();
       let failing: string;
       try {
-        const result = await auditUrl(url);
+        const result = await auditUrl(url, rendered?.fetch);
         failing = result.checks.filter((c) => !c.passed).map((c) => c.article).sort().join(', ');
         console.log(
           `[${stamp}] ${result.passed ? pc.green('PASS') : pc.red('FAIL')} ${url}${failing ? pc.dim(` (${failing})`) : ''}`,
@@ -210,10 +246,14 @@ program
         }
       }
       lastFailing = failing;
+      if (opts.state) saveWatchState(opts.state, failing);
     };
 
     await iteration();
-    if (opts.once) return;
+    if (opts.once) {
+      await rendered?.close();
+      return;
+    }
     setInterval(() => void iteration(), intervalMs);
     console.log(pc.dim(`watching ${url} every ${intervalMs / 1000}s — Ctrl+C to stop`));
   });

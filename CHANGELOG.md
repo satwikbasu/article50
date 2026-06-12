@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-06-12
+
+The release that closes the SPA blind spot.
+
+- `a50 audit --render` and `a50 watch --render` audit the rendered DOM in a headless browser, catching chat widgets that mount via JavaScript and are invisible in raw HTML. Playwright is an optional peer dependency: install it (`npm install playwright && npx playwright install chromium`) only if you need rendered audits; everything else keeps working without it, and the error message tells you exactly what to install.
+- Detection now recognizes mounted-widget DOM artifacts (Intercom launcher, Crisp chatbox, Drift frames, Tidio, Chatwoot) in addition to loader script tags — what a rendered audit actually sees after the widget boots.
+- Monitor: register sites with `render: true` and the scheduler audits their rendered DOM. One shared browser launches lazily on first use; if Playwright isn't installed on the host, rendered checks record an actionable error in the evidence log rather than a false pass.
+- `a50 watch --state <file>` persists the regression baseline, so restarts and `--once` cron runs no longer re-alert on already-reported failures.
+- `auditUrl` and `auditSite` accept an injectable HTML fetcher (library API).
+- 72 tests, up from 62. Verified end-to-end against a real SPA fixture: raw audit reports no signals, rendered audit catches the JS-mounted widget.
+
 ## 0.4.1 — 2026-06-12
 
 - Fix: `a50 --version` reported 0.3.0 in the 0.4.0 release. The CLI now reads its version from package.json, and a test pins the two together so this can't recur.

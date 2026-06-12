@@ -47,3 +47,29 @@ describe('auditHtml', () => {
     expect(marking?.passed).toBe(true);
   });
 });
+
+describe('auditUrl with injected fetcher', () => {
+  it('audits HTML produced by a custom fetcher instead of plain fetch', async () => {
+    const { auditUrl } = await import('../src/audit.js');
+    const html = '<html><body><script src="https://widget.intercom.io/widget/abc"></script></body></html>';
+    const result = await auditUrl('https://spa.example', async () => html);
+    expect(result.aiSurfaceDetected).toBe(true);
+    expect(result.passed).toBe(false);
+  });
+});
+
+describe('rendered-DOM widget artifacts', () => {
+  it('detects mounted widget elements, not just loader script tags', () => {
+    const cases = [
+      '<div class="intercom-launcher">Chat</div>',
+      '<div id="crisp-chatbox"></div>',
+      '<div class="drift-frame-controller"></div>',
+      '<div id="tidio-chat"></div>',
+      '<div class="woot-widget-holder"></div>',
+    ];
+    for (const fragment of cases) {
+      const result = auditHtml(`<html><body>${fragment}</body></html>`);
+      expect(result.aiSurfaceDetected, fragment).toBe(true);
+    }
+  });
+});

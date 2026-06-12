@@ -1,4 +1,5 @@
 import { auditUrl, type AuditResult } from '../audit.js';
+import { createRenderedFetcher, type RenderedFetcher } from '../render.js';
 import type { AuditRun, MonitorStore, Site } from './store.js';
 
 export type AuditFn = (url: string) => Promise<AuditResult>;
@@ -61,8 +62,34 @@ export async function runSiteCheck(
 export interface SchedulerOptions {
   tickMs?: number;
   auditFn?: AuditFn;
+  /** Used for sites registered with render: true. Defaults to a lazily launched headless browser. */
+  renderedAuditFn?: AuditFn;
   alertFn?: AlertFn;
   log?: (line: string) => void;
+}
+
+/**
+ * Default rendered audit: launches the browser on first use and shares it
+ * across sites. A rejected launch (playwright missing) stays cached, so every
+ * render site records the same actionable error instead of retry-launching.
+ */
+function lazyRenderedAuditFn(): { fn: AuditFn; close: () => Promise<void> } {
+  let fetcherPromise: Promise<RenderedFetcher> | undefined;
+  return {
+    fn: async (url) => {
+      fetcherPromise ??= createRenderedFetcher();
+      const fetcher = await fetcherPromise;
+      return auditUrl(url, fetcher.fetch);
+    },
+    close: async () => {
+      if (!fetcherPromise) return;
+      try {
+        await (await fetcherPromise).close();
+      } catch {
+        // launch failed earlier; nothing to close
+      }
+    },
+  };
 }
 
 /**
@@ -73,6 +100,8 @@ export function startScheduler(store: MonitorStore, options: SchedulerOptions = 
   const tickMs = options.tickMs ?? 15_000;
   const log = options.log ?? (() => undefined);
   const nextDue = new Map<string, number>();
+  const lazyRendered = options.renderedAuditFn ? undefined : lazyRenderedAuditFn();
+  const renderedAuditFn = options.renderedAuditFn ?? lazyRendered?.fn;
   let running = false;
 
   const tick = async () => {
@@ -84,7 +113,8 @@ export function startScheduler(store: MonitorStore, options: SchedulerOptions = 
         const due = nextDue.get(site.id) ?? 0;
         if (now < due) continue;
         nextDue.set(site.id, now + store.effectiveIntervalSeconds(site) * 1000);
-        const run = await runSiteCheck(store, site, options.auditFn, options.alertFn);
+        const auditFn = site.render ? renderedAuditFn : options.auditFn;
+        const run = await runSiteCheck(store, site, auditFn, options.alertFn);
         log(
           `[${run.at}] ${run.error ? 'ERROR' : run.passed ? 'PASS' : 'FAIL'} ${site.url}${
             run.failing.length ? ` (${run.failing.join(', ')})` : ''
@@ -98,5 +128,8 @@ export function startScheduler(store: MonitorStore, options: SchedulerOptions = 
 
   const timer = setInterval(() => void tick(), tickMs);
   void tick();
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    void lazyRendered?.close();
+  };
 }
