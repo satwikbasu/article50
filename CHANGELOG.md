@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-06-12
+
+Billing lifecycle completed and a fairer audit.
+
+- Stripe `customer.subscription.deleted` events now downgrade the key to the free plan automatically — cancellations no longer need a manual key edit. Add the event to your webhook subscription and copy the `a50_key` metadata onto the subscription (see MONITOR.md).
+- Downgrades take effect immediately: the Monitor scheduler clamps every site's audit interval to the owner's *current* plan, so a cancelled team key drops from 15-minute to daily checks without touching the site records.
+- `a50 audit` no longer fails pages that have no AI signals at all. A page with no chat surface, no machine-readable marker, and no AI disclosure language has no observable Article 50 marking obligation; it now passes with an explanatory `ai-content-signals` check. Pages that do show AI signals keep the strict checks — visible "AI-generated" text without a machine-readable marker still fails Art. 50(2). Caveat unchanged: the audit reads raw HTML, so a fully client-side-rendered custom widget needs the (planned) rendered-DOM audit to be caught.
+- 61 tests, up from 57.
+
 ## 0.3.0 — 2026-06-11
 
 The revenue engine. `a50 monitor` runs the Monitor server: scheduled audits of registered sites, Slack-compatible regression alerts, and an append-only evidence log served as auditor-ready markdown.
