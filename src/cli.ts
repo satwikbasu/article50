@@ -18,13 +18,14 @@ import {
   policyMarkdown,
   MARKING_HTTP_HEADER,
 } from './generate.js';
+import { VERSION } from './version.js';
 
 const program = new Command();
 
 program
   .name('a50')
   .description('EU AI Act Article 50 transparency compliance toolkit')
-  .version('0.3.0');
+  .version(VERSION);
 
 function parseConfidence(value: string): Confidence {
   if (value === 'high' || value === 'medium' || value === 'low') return value;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-06-12
+
+- Fix: `a50 --version` reported 0.3.0 in the 0.4.0 release. The CLI now reads its version from package.json, and a test pins the two together so this can't recur.
+
 ## 0.4.0 — 2026-06-12
 
 Billing lifecycle completed and a fairer audit.
