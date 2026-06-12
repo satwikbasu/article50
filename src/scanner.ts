@@ -10,6 +10,7 @@ import {
   type DetectorKind,
 } from './rules/detectors.js';
 import { EMPTY_CONFIG, loadConfig, type A50Config } from './config.js';
+import { analyzeImportUsage, extractImportedBindings, type ImportUsage } from './usage.js';
 import type { Art50Category } from './deadlines.js';
 
 export interface Finding {
@@ -22,6 +23,8 @@ export interface Finding {
   line: number;
   excerpt: string;
   hint: string;
+  /** For SDK import matches: whether the imported binding is referenced in the file. */
+  usage?: ImportUsage;
 }
 
 export interface ScanOptions {
@@ -125,7 +128,7 @@ export function scanFile(
     for (const detector of detectors) {
       if (!detectorApplies(detector, ext)) continue;
       if (detector.pattern.test(line)) {
-        findings.push({
+        const finding: Finding = {
           detectorId: detector.id,
           title: detector.title,
           kind: detector.kind,
@@ -135,7 +138,17 @@ export function scanFile(
           line: i + 1,
           excerpt: clean(line),
           hint: detector.hint,
-        });
+        };
+        // An SDK import that is never referenced again is dead weight, not an
+        // AI surface — drop it below the default CI gate instead of crying wolf.
+        if (detector.kind === 'sdk' && extractImportedBindings(line).length > 0) {
+          finding.usage = analyzeImportUsage(content, line, i);
+          if (finding.usage === 'unused') {
+            finding.confidence = 'low';
+            finding.hint = `${detector.hint} Imported but never used in this file — likely dead code or a stale import.`;
+          }
+        }
+        findings.push(finding);
       }
     }
     for (const ev of EVIDENCE_DETECTORS) {

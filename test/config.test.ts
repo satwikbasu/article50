@@ -63,7 +63,7 @@ describe('confidence filtering', () => {
   it('minConfidence drops lower-confidence findings', () => {
     const dir = mkdtempSync(join(tmpdir(), 'a50-conf-'));
     writeFileSync(join(dir, 'emotion.py'), 'result = detect_emotion(frame)  # low confidence signal');
-    writeFileSync(join(dir, 'chat.py'), 'from openai import OpenAI');
+    writeFileSync(join(dir, 'chat.py'), 'from openai import OpenAI\nclient = OpenAI()');
     const all = scan(dir);
     expect(all.findings.some((f) => f.confidence === 'low')).toBe(true);
     const filtered = scan(dir, { minConfidence: 'high' });

@@ -23,7 +23,7 @@ Fines go up to €15M or 3% of global annual turnover, whichever is higher (Art.
 
 Four commands, in the order you'll actually need them:
 
-**`a50 scan`** finds the AI in your codebase. It knows the fingerprints of 20+ AI SDKs and APIs (OpenAI, Anthropic, Gemini, LangChain, ElevenLabs, chat widgets, and so on) across JavaScript/TypeScript, Python, Go, Java, and dependency manifests. Each finding is mapped to its Article 50 obligation, with the file, the line, a confidence rating, and a countdown to the deadline.
+**`a50 scan`** finds the AI in your codebase. It knows the fingerprints of 20+ AI SDKs and APIs (OpenAI, Anthropic, Gemini, LangChain, ElevenLabs, chat widgets, and so on) across JavaScript/TypeScript, Python, Go, Java, and dependency manifests. Each finding is mapped to its Article 50 obligation, with the file, the line, a confidence rating, and a countdown to the deadline. Imports are checked for actual usage: an SDK that's imported but never referenced again is reported at low confidence as likely dead code, so a stale import doesn't fail your CI gate.
 
 **`a50 audit <url>`** checks what an inspector's crawler would see on your live site: disclosure language, ai-generated meta tags, IPTC `trainedAlgorithmicMedia`, C2PA markers, JSON-LD. Add `--crawl` to walk every same-origin page. Add `--render` to audit the rendered DOM in a headless browser — this catches chat widgets that mount via JavaScript and are invisible in the raw HTML, which is most of them on single-page apps. Rendered audits need Playwright (`npm install playwright && npx playwright install chromium`); everything else works without it.
 

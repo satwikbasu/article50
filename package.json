@@ -1,6 +1,6 @@
 {
   "name": "article50",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "EU AI Act Article 50 transparency compliance toolkit — scan your code, audit your site, generate the fix before August 2, 2026.",
   "keywords": [
     "eu-ai-act",

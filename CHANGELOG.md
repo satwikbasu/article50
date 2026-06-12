@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-06-12
+
+Detection quality: the scanner now checks whether imports are actually used.
+
+- SDK import findings get usage analysis: the imported binding names are extracted (JS/TS default, named, namespace, and require forms; Python `import` / `from … import` with aliases) and checked for references elsewhere in the file. An import that is never touched again is downgraded to low confidence with an explicit "imported but never used" hint, so dead code and stale imports stop failing `--min-confidence high` CI gates.
+- Findings carry a `usage` field (`used` / `unused` / `unknown`) in JSON and SARIF output for SDK import matches. Other imports and comment lines don't count as usage; anything unparseable is left untouched — unknown beats wrong.
+- Verified against vercel/ai-chatbot: all 46 SDK import findings correctly identified as used, zero false downgrades.
+- 83 tests, up from 72.
+
 ## 0.5.0 — 2026-06-12
 
 The release that closes the SPA blind spot.

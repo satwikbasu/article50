@@ -1,4 +1,6 @@
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { scan } from '../src/scanner.js';
@@ -68,5 +70,31 @@ describe('classify', () => {
     const reassessed = classify(result);
     const interaction = reassessed.assessments.find((a) => a.obligation.category === 'interaction');
     expect(interaction?.status).toBe('review-evidence');
+  });
+});
+
+describe('import usage downgrades', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'a50-usage-'));
+  writeFileSync(join(dir, 'unused.ts'), "import OpenAI from 'openai';\nexport const x = 1;\n");
+  writeFileSync(join(dir, 'used.ts'), "import OpenAI from 'openai';\nexport const c = new OpenAI();\n");
+  const result = scan(dir);
+
+  it('downgrades an imported-but-unused SDK to low confidence', () => {
+    const finding = result.findings.find((f) => f.file === 'unused.ts');
+    expect(finding?.confidence).toBe('low');
+    expect(finding?.usage).toBe('unused');
+    expect(finding?.hint).toMatch(/imported but never used/i);
+  });
+
+  it('keeps a used SDK at high confidence', () => {
+    const finding = result.findings.find((f) => f.file === 'used.ts');
+    expect(finding?.confidence).toBe('high');
+    expect(finding?.usage).toBe('used');
+  });
+
+  it('drops unused imports below the default CI gate', () => {
+    const gated = scan(dir, { minConfidence: 'high' });
+    expect(gated.findings.some((f) => f.file === 'unused.ts')).toBe(false);
+    expect(gated.findings.some((f) => f.file === 'used.ts')).toBe(true);
   });
 });
